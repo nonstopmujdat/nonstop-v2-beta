@@ -346,3 +346,36 @@ a{color:inherit;text-decoration:none}
 @media(max-width:1000px){
   .stat-footer,.court-area{margin-top:0}
 }
+
+/* V2.1.4 FORCE vertical shift: no size changes except scoreboard height. */
+.operator-page{
+  grid-template-rows:74px 118px minmax(0,1fr) 112px !important;
+}
+.score-header{
+  height:74px !important;
+  max-height:74px !important;
+  overflow:hidden !important;
+}
+.team-score,.clock-box{
+  padding-top:4px !important;
+  padding-bottom:4px !important;
+}
+.clock-box strong{
+  font-size:56px !important;
+  line-height:.80 !important;
+}
+/* Same sizes, stronger downward move for BOTH left-side work blocks. */
+.stat-footer{
+  margin-top:48px !important;
+}
+.court-area{
+  margin-top:48px !important;
+}
+/* Player column remains fixed; do not resize field/stat blocks. */
+.roster-panel{
+  margin-top:0 !important;
+}
+@media(max-width:1000px){
+  .stat-footer,.court-area{margin-top:0 !important}
+  .score-header{height:auto !important;max-height:none !important}
+}
