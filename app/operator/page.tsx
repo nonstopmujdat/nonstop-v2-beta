@@ -44,6 +44,7 @@ export default function OperatorPage() {
   const [bench, setBench] = useState(['#9 Ege', '#10 Okan', '#11 Mert', '#12 Can', '#13 Tuna', '#14 Emir', '#15 Arda']);
   const [courtTab, setCourtTab] = useState<CourtTab>('court');
   const clickTimer = useRef<any>(null);
+  const clickPoints = useRef<1 | 2 | 3 | null>(null);
   const [markers, setMarkers] = useState<CourtMarker[]>([
     { id: 'm1', x: 24, y: 30, label: '2P✓', made: true, kind: 'shot' },
     { id: 'm2', x: 36, y: 39, label: '3P×', made: false, kind: 'shot' },
@@ -120,16 +121,30 @@ export default function OperatorPage() {
   }
 
   function handleStatClick(points: 1 | 2 | 3) {
-    if (clickTimer.current) {
+    // Tek tık: 1 saniye bekler, ikinci tık gelmezse isabetsiz atış.
+    // Aynı butona ikinci tık 1 saniye içinde gelirse sayı olarak kaydeder.
+    if (clickTimer.current && clickPoints.current === points) {
       clearTimeout(clickTimer.current);
       clickTimer.current = null;
+      clickPoints.current = null;
       startShot(points, true);
       return;
     }
+
+    if (clickTimer.current && clickPoints.current !== points) {
+      clearTimeout(clickTimer.current);
+      const previousPoints = clickPoints.current;
+      clickTimer.current = null;
+      clickPoints.current = null;
+      if (previousPoints) startShot(previousPoints, false);
+    }
+
+    clickPoints.current = points;
     clickTimer.current = setTimeout(() => {
       clickTimer.current = null;
+      clickPoints.current = null;
       startShot(points, false);
-    }, 280);
+    }, 1000);
   }
 
   function setAssist(player: string | null) {
@@ -264,11 +279,11 @@ export default function OperatorPage() {
       </header>
 
       <section className="stat-footer">
-        <div className="stat-context"><span>İstatistik Girişi</span><b>{selectedPlayer}</b><small>Tek tık: atış / isabetsiz • Çift tık: sayı</small></div>
+        <div className="stat-context"><span>İstatistik Girişi</span><b>{selectedPlayer}</b><small>Tek tık: 1 sn bekler, isabetsiz atış • Çift tık: sayı • +1: faul çizgisi</small></div>
         <div className="stat-buttons">
           <button onClick={() => handleStatClick(2)}>2 Sayı / Atış</button>
           <button onClick={() => handleStatClick(3)}>3 Sayı / Atış</button>
-          <button onClick={() => handleStatClick(1)}>Faul Çizgisi</button>
+          <button onClick={() => handleStatClick(1)}>+1</button>
           <button onClick={() => eventOnly('OREB')}>Rib. H</button>
           <button onClick={() => eventOnly('DREB')}>Rib. S</button>
           <button onClick={() => eventOnly('STL')}>Top Çalma</button>
