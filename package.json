@@ -1,6 +1,6 @@
 {
-  "name": "nonstop-v1-9-working-mvp",
-  "version": "1.9.0",
+  "name": "nonstop-v2-1-9-supabase-stable",
+  "version": "2.1.9",
   "private": true,
   "scripts": {
     "dev": "next dev",

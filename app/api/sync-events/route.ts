@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getUserId, hasSupabaseAdminEnv, jsonError } from '@/lib/apiHelpers';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 
 export async function POST(req: Request) {
   try {
@@ -17,6 +17,7 @@ export async function POST(req: Request) {
       });
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
     const results = [];
     for (const evt of events) {
       if (!evt.event_id) {
