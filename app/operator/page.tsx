@@ -242,17 +242,31 @@ export default function OperatorPage() {
 
   function saveSub(playerIn: string) {
     if (!subOut) return;
-    setOnCourt(prev => prev.map(p => p === subOut ? playerIn : p));
-    setBench(prev => [subOut, ...prev.filter(p => p !== playerIn)]);
+
+    const playerOut = subOut;
+    if (playerIn === playerOut) return;
+
+    // Oyuncu değişikliği sadece olay kaydı değil, ekrandaki kadroyu da günceller.
+    // Çıkan oyuncu sahadan yedeklere, giren oyuncu yedekten sahaya taşınır.
+    setOnCourt(prev => {
+      const replaced = prev.map(p => p === playerOut ? playerIn : p);
+      return Array.from(new Set(replaced)).slice(0, 5);
+    });
+
+    setBench(prev => {
+      const withoutIncoming = prev.filter(p => p !== playerIn && p !== playerOut);
+      return [...withoutIncoming, playerOut];
+    });
+
     setSelectedPlayer(playerIn);
     enqueue({
       event_id: createEventId(),
       type: 'SUBSTITUTION',
       player: playerIn,
       status: online ? 'ready' : 'queued',
-      payload: { player_out: subOut, player_in: playerIn }
+      payload: { player_out: playerOut, player_in: playerIn }
     });
-    log(`${fmt(seconds)} DEĞİŞİKLİK: ${subOut} OUT / ${playerIn} IN`);
+    log(`${fmt(seconds)} DEĞİŞİKLİK: ${playerOut} OUT / ${playerIn} IN`);
     setSubOut(null);
   }
 
@@ -359,7 +373,7 @@ export default function OperatorPage() {
             <h2>Oyuncu Değişikliği</h2>
             <p>Çıkan oyuncu: <b>{subOut}</b></p>
             <h3>Oyuna Girecek Oyuncu</h3>
-            <div className="bench-grid">{bench.map(p => <button key={p} onClick={() => saveSub(p)}>→ {p}</button>)}</div>
+            <div className="bench-grid">{bench.map(p => <button key={p} className="sub-in-btn" onClick={() => saveSub(p)}>→ {p} Oyuna Gir</button>)}</div>
             <br /><button onClick={() => setSubOut(null)}>İptal</button>
           </div>
         </div>

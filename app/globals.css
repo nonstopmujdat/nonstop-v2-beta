@@ -396,3 +396,21 @@ a{color:inherit;text-decoration:none}
 @media(max-width:1000px){
   .stat-footer,.court-area{transform:none !important;}
 }
+
+/* V2.1.7 scoreboard height +30 only */
+.score-header{
+  height:96px !important;
+  max-height:96px !important;
+  min-height:96px !important;
+  overflow:visible !important;
+}
+.operator-page{
+  grid-template-rows:96px 118px minmax(0,1fr) 112px !important;
+}
+.team-score,.clock-box{
+  min-height:96px !important;
+}
+@media(max-width:1000px){
+  .score-header{height:auto !important;max-height:none !important;min-height:0 !important}
+  .team-score,.clock-box{min-height:0 !important}
+}
