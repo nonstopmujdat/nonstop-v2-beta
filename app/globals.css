@@ -196,3 +196,115 @@ a{color:inherit;text-decoration:none}
   .court{width:100%;min-height:220px}
   .stat-buttons{grid-template-columns:repeat(4,1fr)}
 }
+
+/* V2.1.2 scoreboard width + stat panel isolation fix */
+.operator-page{
+  grid-template-rows:82px 118px minmax(0,1fr) 112px;
+  gap:8px;
+}
+.score-header{
+  grid-template-columns:minmax(120px,.5fr) minmax(330px,1.75fr) minmax(120px,.5fr);
+  align-items:stretch;
+  gap:8px;
+}
+.team-score{
+  min-width:0;
+  padding:6px 8px;
+}
+.team-score h1{
+  font-size:13px;
+  line-height:1.05;
+  word-break:break-word;
+}
+.team-score b{
+  font-size:28px;
+}
+.clock-box{
+  min-width:0;
+  padding:6px 10px;
+}
+.clock-box strong{
+  font-size:60px;
+  line-height:.88;
+}
+.clock-box span{
+  font-size:11px;
+}
+.clock-box small{
+  font-size:10px;
+}
+.clock-buttons button{
+  padding:3px 12px;
+}
+
+/* Statistic panel should only be as wide as the court/shot/foul area. The right side is reserved for players. */
+.stat-footer{
+  width:calc(100% - 468px);
+  max-width:calc(100% - 468px);
+  min-width:520px;
+  grid-template-columns:150px minmax(0,1fr);
+  align-self:start;
+  overflow:hidden;
+  z-index:1;
+}
+.stat-context b{font-size:15px}
+.stat-context small{font-size:9px}
+.stat-buttons{
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-rows:repeat(3,32px);
+  height:auto;
+  align-content:start;
+}
+.stat-buttons button{
+  min-height:32px;
+  height:32px;
+  font-size:10px;
+  padding:3px 4px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+}
+.stat-buttons .shot-btn{font-size:14px}
+/* Row 1: +1 +2 +3 */
+.stat-buttons button:nth-child(1){grid-column:1;grid-row:1}
+.stat-buttons button:nth-child(2){grid-column:2;grid-row:1}
+.stat-buttons button:nth-child(3){grid-column:3;grid-row:1}
+/* Row 2: rebounds and turnovers */
+.stat-buttons button:nth-child(4){grid-column:1;grid-row:2}
+.stat-buttons button:nth-child(5){grid-column:2;grid-row:2}
+.stat-buttons button:nth-child(6){grid-column:3;grid-row:2}
+.stat-buttons button:nth-child(7){grid-column:4;grid-row:2;background:#15803d}
+/* Row 3: foul / block actions. Keep all visible. */
+.stat-buttons button:nth-child(8){grid-column:1;grid-row:3;background:#6d28d9}
+.stat-buttons button:nth-child(9){grid-column:2;grid-row:3;background:#b45309}
+.stat-buttons button:nth-child(10){grid-column:3;grid-row:3;background:#991b1b}
+.stat-buttons button:nth-child(11){grid-column:4;grid-row:3;background:#7f1d1d}
+
+.operator-layout{
+  grid-template-columns:minmax(0,1fr) 460px;
+  align-items:start;
+}
+/* Move player panel upward into the free space next to the stat panel. */
+.roster-panel{
+  margin-top:-126px;
+  min-height:calc(100% + 126px);
+  grid-template-rows:auto minmax(0,1.45fr) minmax(100px,.75fr) 58px;
+}
+.court-area{
+  margin-top:0;
+}
+.court{
+  width:52%;
+  min-height:160px;
+  max-height:280px;
+}
+
+@media(max-width:1000px){
+  .score-header{grid-template-columns:1fr}
+  .stat-footer{width:100%;max-width:none;min-width:0;grid-template-columns:1fr}
+  .stat-buttons{grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(3,36px)}
+  .stat-buttons button{height:36px;min-height:36px}
+  .roster-panel{margin-top:0;min-height:0}
+  .court{width:100%;min-height:220px}
+}
