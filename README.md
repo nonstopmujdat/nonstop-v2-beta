@@ -89,3 +89,12 @@ Sıradaki işler:
 - Operatör A / Operatör B ayrı route yapısı
 - Realtime canlı skor
 - PDF/Excel raporları
+
+## Supabase event insert test
+Operator page now posts events to `/api/match-events` when ONLINE.
+Required environment variables:
+- NEXT_PUBLIC_SUPABASE_URL
+- NEXT_PUBLIC_SUPABASE_ANON_KEY
+- SUPABASE_SERVICE_ROLE_KEY
+
+Run `database/003_demo_match_data.sql` in Supabase SQL Editor after the schema files. It creates demo match_id=1, team_id=1, and player ids used by the operator page.

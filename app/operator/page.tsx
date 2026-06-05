@@ -71,14 +71,59 @@ export default function OperatorPage() {
     setTimer(null);
   }
 
+  function getDemoPlayerId(player: string) {
+    const match = player.match(/#(\d+)/);
+    if (!match) return null;
+    const jersey = Number(match[1]);
+    const map: Record<number, number> = { 7: 1, 4: 2, 5: 3, 6: 4, 8: 5, 9: 6, 10: 7, 11: 8, 12: 9, 13: 10, 14: 11, 15: 12 };
+    return map[jersey] || null;
+  }
+
   function addQueue(type: string, player: string, payload: Record<string, any> = {}) {
-    enqueue({
+    const event = {
       event_id: createEventId(),
       type,
       player,
-      status: online ? 'ready' : 'queued',
+      status: online ? 'ready' as const : 'queued' as const,
       payload
-    });
+    };
+
+    enqueue(event);
+
+    // Online modda olayları Supabase'e yazan Next.js API route'una gönderir.
+    // Demo sabitleri 003_demo_match_data.sql ile oluşturulan test maçına bağlıdır.
+    if (online) {
+      fetch('/api/match-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_event_id: event.event_id,
+          event_type: type,
+          match_id: 1,
+          team_id: 1,
+          player_id: getDemoPlayerId(player),
+          quarter: 4,
+          game_clock: fmt(seconds),
+          operator_side: 'HOME_OPERATOR',
+          sync_source: 'OPERATOR_WEB',
+          client_created_at: new Date().toISOString(),
+          linked_basket_id: payload.linked_basket_id,
+          event_tags: payload.tags?.join?.('-') || payload.event_tags,
+          notes: JSON.stringify({ player_label: player, ...payload })
+        })
+      })
+        .then(async res => {
+          if (!res.ok) {
+            const text = await res.text();
+            console.error('NONSTOP Supabase kayıt hatası:', text);
+            log(`SİSTEM: Supabase kayıt hatası (${type})`);
+          }
+        })
+        .catch(err => {
+          console.error('NONSTOP API bağlantı hatası:', err);
+          log(`SİSTEM: API bağlantı hatası (${type})`);
+        });
+    }
   }
 
   async function syncNow() {
@@ -170,32 +215,18 @@ export default function OperatorPage() {
       : `${context.points}P${context.made ? 'M' : 'A_MISS'}`;
     const tag = context.tags.length ? context.tags.join('-') : (context.made ? 'SAYI' : 'İSABETSİZ');
 
-    enqueue({
-      event_id: createEventId(),
-      linked_basket_id: context.linked_basket_id,
-      type,
-      player: context.player,
-      status: online ? 'ready' : 'queued',
-      payload: { ...context, shot_x: shot?.x, shot_y: shot?.y, made: context.made }
-    });
+    addQueue(type, context.player, { ...context, linked_basket_id: context.linked_basket_id, shot_x: shot?.x, shot_y: shot?.y, made: context.made, tags: context.tags });
 
     log(`${fmt(seconds)} ${context.player} ${type} ${tag}${shot ? ` (${shot.x.toFixed(0)}%, ${shot.y.toFixed(0)}%)` : ''}`);
 
     if (context.made && context.assist && context.assist !== 'YOK' && context.assist !== 'PENDING') {
-      enqueue({
-        event_id: createEventId(),
-        linked_basket_id: context.linked_basket_id,
-        type: 'AST',
-        player: context.assist,
-        status: online ? 'ready' : 'queued',
-        payload: { assist: context.assist }
-      });
+      addQueue('AST', context.assist, { linked_basket_id: context.linked_basket_id, assist: context.assist });
       log(`${fmt(seconds)} ${context.assist} AST`);
     }
 
     if (context.made && context.foul && context.foul !== 'YOK' && context.foul !== 'PENDING') {
-      enqueue({ event_id: createEventId(), linked_basket_id: context.linked_basket_id, type: 'FD', player: context.player, status: online ? 'ready' : 'queued', payload: { drawn_by: context.player } });
-      enqueue({ event_id: createEventId(), linked_basket_id: context.linked_basket_id, type: 'PF', player: context.foul, status: online ? 'ready' : 'queued', payload: { committed_by: context.foul } });
+      addQueue('FD', context.player, { linked_basket_id: context.linked_basket_id, drawn_by: context.player });
+      addQueue('PF', context.foul, { linked_basket_id: context.linked_basket_id, committed_by: context.foul });
       log(`${fmt(seconds)} ${context.player} FD`);
       log(`${fmt(seconds)} ${context.foul} PF`);
     }
@@ -259,13 +290,7 @@ export default function OperatorPage() {
     });
 
     setSelectedPlayer(playerIn);
-    enqueue({
-      event_id: createEventId(),
-      type: 'SUBSTITUTION',
-      player: playerIn,
-      status: online ? 'ready' : 'queued',
-      payload: { player_out: playerOut, player_in: playerIn }
-    });
+    addQueue('SUBSTITUTION', playerIn, { player_out: playerOut, player_in: playerIn });
     log(`${fmt(seconds)} DEĞİŞİKLİK: ${playerOut} OUT / ${playerIn} IN`);
     setSubOut(null);
   }
