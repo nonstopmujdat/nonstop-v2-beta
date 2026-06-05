@@ -281,16 +281,16 @@ export default function OperatorPage() {
       <section className="stat-footer">
         <div className="stat-context"><span>İstatistik Girişi</span><b>{selectedPlayer}</b><small>Tek tık: 1 sn bekler, isabetsiz atış • Çift tık: sayı • +1: faul çizgisi</small></div>
         <div className="stat-buttons">
-          <button onClick={() => handleStatClick(2)}>2 Sayı / Atış</button>
-          <button onClick={() => handleStatClick(3)}>3 Sayı / Atış</button>
-          <button onClick={() => handleStatClick(1)}>+1</button>
+          <button className="shot-btn" onClick={() => handleStatClick(1)}>+1</button>
+          <button className="shot-btn" onClick={() => handleStatClick(2)}>+2</button>
+          <button className="shot-btn" onClick={() => handleStatClick(3)}>+3</button>
           <button onClick={() => eventOnly('OREB')}>Rib. H</button>
           <button onClick={() => eventOnly('DREB')}>Rib. S</button>
           <button onClick={() => eventOnly('STL')}>Top Çalma</button>
-          <button onClick={() => eventOnly('BLK')}>Blok</button>
           <button onClick={() => eventOnly('TOV')}>Top Kaybı</button>
           <button onClick={() => startFoulPick('PF')}>Faul</button>
           <button onClick={() => startFoulPick('FD')}>Faul Aldı</button>
+          <button onClick={() => eventOnly('BLK')}>Blok</button>
           <button onClick={() => eventOnly('BY')}>Blok Yedi</button>
         </div>
       </section>
