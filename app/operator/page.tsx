@@ -1,16 +1,28 @@
 "use client";
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createEventId, createLinkedBasketId, enqueue, markSynced, getQueue } from '@/lib/offlineQueue';
 
-type BasketContext = {
+type ShotContext = {
   linked_basket_id: string;
   player: string;
-  points: 2 | 3;
-  assist: string;
-  foul: string;
+  points: 1 | 2 | 3;
+  made: boolean;
+  assist?: string;
+  foul?: string;
   tags: string[];
 };
+
+type CourtMarker = {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+  made: boolean;
+  kind: 'shot' | 'foul';
+};
+
+type CourtTab = 'court' | 'shots' | 'fouls' | 'heat';
 
 export default function OperatorPage() {
   const [homeScore, setHomeScore] = useState(52);
@@ -23,23 +35,33 @@ export default function OperatorPage() {
     '03:58 #4 Ahmet AST',
     '04:10 #8 Kerem DREB'
   ]);
-  const [basketModal, setBasketModal] = useState<BasketContext | null>(null);
+  const [shotModal, setShotModal] = useState<ShotContext | null>(null);
+  const [pendingShot, setPendingShot] = useState<ShotContext | null>(null);
+  const [pendingFoul, setPendingFoul] = useState<string | null>(null);
   const [subOut, setSubOut] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
+  const [onCourt, setOnCourt] = useState(['#7 Burak', '#4 Ahmet', '#5 Mehmet', '#6 Ali', '#8 Kerem']);
+  const [bench, setBench] = useState(['#9 Ege', '#10 Okan', '#11 Mert', '#12 Can', '#13 Tuna', '#14 Emir', '#15 Arda']);
+  const [courtTab, setCourtTab] = useState<CourtTab>('court');
+  const clickTimer = useRef<any>(null);
+  const [markers, setMarkers] = useState<CourtMarker[]>([
+    { id: 'm1', x: 24, y: 30, label: '2P✓', made: true, kind: 'shot' },
+    { id: 'm2', x: 36, y: 39, label: '3P×', made: false, kind: 'shot' },
+    { id: 'm3', x: 51, y: 52, label: 'PF', made: false, kind: 'foul' },
+    { id: 'm4', x: 70, y: 44, label: '2P✓', made: true, kind: 'shot' }
+  ]);
 
   function fmt(s: number) {
     return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
   }
 
   function log(text: string) {
-    setFeed(prev => [text, ...prev]);
+    setFeed(prev => [text, ...prev].slice(0, 30));
   }
 
   function startClock() {
     if (timer) return;
-    const t = setInterval(() => {
-      setSeconds(s => Math.max(0, s - 1));
-    }, 1000);
+    const t = setInterval(() => setSeconds(s => Math.max(0, s - 1)), 1000);
     setTimer(t);
   }
 
@@ -74,27 +96,44 @@ export default function OperatorPage() {
     log(`${fmt(seconds)} ${selectedPlayer} ${type}`);
   }
 
-  function freeThrow(made: boolean) {
-    if (made) setHomeScore(s => s + 1);
-    const type = made ? 'FTM' : 'FTA_MISS';
-    addQueue(type, selectedPlayer, { is_free_throw: true, made });
-    log(`${fmt(seconds)} ${selectedPlayer} ${made ? 'FTM +1' : 'FTA_MISS'}`);
-  }
-
-  function basket(points: 2 | 3) {
-    setHomeScore(s => s + points);
-    setBasketModal({
+  function startShot(points: 1 | 2 | 3, made: boolean) {
+    const ctx: ShotContext = {
       linked_basket_id: createLinkedBasketId(),
       player: selectedPlayer,
       points,
-      assist: 'PENDING',
-      foul: 'PENDING',
+      made,
+      assist: points === 1 ? 'YOK' : 'PENDING',
+      foul: points === 1 ? 'YOK' : 'PENDING',
       tags: []
-    });
+    };
+
+    if (made) setHomeScore(s => s + points);
+
+    if (points === 1) {
+      saveShot(ctx, { x: 15, y: 50 });
+      setMarkers(prev => [{ id: createEventId(), x: 15, y: 50, label: made ? 'FT✓' : 'FT×', made, kind: 'shot' }, ...prev]);
+      return;
+    }
+
+    if (made) setShotModal(ctx);
+    else setPendingShot(ctx);
+  }
+
+  function handleStatClick(points: 1 | 2 | 3) {
+    if (clickTimer.current) {
+      clearTimeout(clickTimer.current);
+      clickTimer.current = null;
+      startShot(points, true);
+      return;
+    }
+    clickTimer.current = setTimeout(() => {
+      clickTimer.current = null;
+      startShot(points, false);
+    }, 280);
   }
 
   function setAssist(player: string | null) {
-    setBasketModal(m => {
+    setShotModal(m => {
       if (!m) return m;
       const tags = player ? Array.from(new Set([...m.tags, 'AB'])) : m.tags.filter(t => t !== 'AB');
       return { ...m, assist: player || 'YOK', tags };
@@ -102,67 +141,95 @@ export default function OperatorPage() {
   }
 
   function setFoul(player: string | null) {
-    setBasketModal(m => {
+    setShotModal(m => {
       if (!m) return m;
       const tags = player ? Array.from(new Set([...m.tags, 'FA'])) : m.tags.filter(t => t !== 'FA');
       return { ...m, foul: player || 'YOK', tags };
     });
   }
 
-  function saveBasket() {
-    if (!basketModal) return;
-
-    const tag = basketModal.tags.length ? basketModal.tags.join('-') : 'B';
-    const type = basketModal.points === 2 ? '2PM' : '3PM';
+  function saveShot(context: ShotContext, shot?: { x: number; y: number }) {
+    const isFreeThrow = context.points === 1;
+    const type = isFreeThrow
+      ? (context.made ? 'FTM' : 'FTA_MISS')
+      : `${context.points}P${context.made ? 'M' : 'A_MISS'}`;
+    const tag = context.tags.length ? context.tags.join('-') : (context.made ? 'SAYI' : 'İSABETSİZ');
 
     enqueue({
       event_id: createEventId(),
-      linked_basket_id: basketModal.linked_basket_id,
+      linked_basket_id: context.linked_basket_id,
       type,
-      player: basketModal.player,
+      player: context.player,
       status: online ? 'ready' : 'queued',
-      payload: basketModal
+      payload: { ...context, shot_x: shot?.x, shot_y: shot?.y, made: context.made }
     });
 
-    log(`${fmt(seconds)} ${basketModal.player} ${basketModal.points}PM ${tag}`);
+    log(`${fmt(seconds)} ${context.player} ${type} ${tag}${shot ? ` (${shot.x.toFixed(0)}%, ${shot.y.toFixed(0)}%)` : ''}`);
 
-    if (basketModal.assist !== 'YOK' && basketModal.assist !== 'PENDING') {
+    if (context.made && context.assist && context.assist !== 'YOK' && context.assist !== 'PENDING') {
       enqueue({
         event_id: createEventId(),
-        linked_basket_id: basketModal.linked_basket_id,
+        linked_basket_id: context.linked_basket_id,
         type: 'AST',
-        player: basketModal.assist,
+        player: context.assist,
         status: online ? 'ready' : 'queued',
-        payload: { assist: basketModal.assist }
+        payload: { assist: context.assist }
       });
-      log(`${fmt(seconds)} ${basketModal.assist} AST`);
+      log(`${fmt(seconds)} ${context.assist} AST`);
     }
 
-    if (basketModal.foul !== 'YOK' && basketModal.foul !== 'PENDING') {
-      enqueue({
-        event_id: createEventId(),
-        linked_basket_id: basketModal.linked_basket_id,
-        type: 'FD',
-        player: basketModal.player,
-        status: online ? 'ready' : 'queued',
-        payload: { drawn_by: basketModal.player }
-      });
-      enqueue({
-        event_id: createEventId(),
-        linked_basket_id: basketModal.linked_basket_id,
-        type: 'PF',
-        player: basketModal.foul,
-        status: online ? 'ready' : 'queued',
-        payload: { committed_by: basketModal.foul }
-      });
-      log(`${fmt(seconds)} ${basketModal.player} FD`);
-      log(`${fmt(seconds)} ${basketModal.foul} PF`);
+    if (context.made && context.foul && context.foul !== 'YOK' && context.foul !== 'PENDING') {
+      enqueue({ event_id: createEventId(), linked_basket_id: context.linked_basket_id, type: 'FD', player: context.player, status: online ? 'ready' : 'queued', payload: { drawn_by: context.player } });
+      enqueue({ event_id: createEventId(), linked_basket_id: context.linked_basket_id, type: 'PF', player: context.foul, status: online ? 'ready' : 'queued', payload: { committed_by: context.foul } });
+      log(`${fmt(seconds)} ${context.player} FD`);
+      log(`${fmt(seconds)} ${context.foul} PF`);
+    }
+  }
+
+  function saveShotWithoutLocation() {
+    if (!shotModal) return;
+    saveShot(shotModal);
+    setShotModal(null);
+  }
+
+  function startShotPick() {
+    if (!shotModal) return;
+    setPendingShot(shotModal);
+    setShotModal(null);
+  }
+
+  function startFoulPick(type: string) {
+    setPendingShot(null);
+    setPendingFoul(type);
+    setCourtTab('fouls');
+  }
+
+  function handleCourtClick(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    if (pendingFoul) {
+      const type = pendingFoul;
+      setMarkers(prev => [{ id: createEventId(), x, y, label: type, made: false, kind: 'foul' }, ...prev]);
+      addQueue(type, selectedPlayer, { foul_x: x, foul_y: y });
+      log(`${fmt(seconds)} ${selectedPlayer} ${type} (${x.toFixed(0)}%, ${y.toFixed(0)}%)`);
+      setPendingFoul(null);
+      return;
     }
 
-    setBasketModal(null);
+    if (!pendingShot) return;
+    const label = pendingShot.points === 1 ? (pendingShot.made ? 'FT✓' : 'FT×') : `${pendingShot.points}P${pendingShot.made ? '✓' : '×'}`;
+    setMarkers(prev => [{ id: createEventId(), x, y, label, made: pendingShot.made, kind: 'shot' }, ...prev]);
+    saveShot(pendingShot, { x, y });
+    setPendingShot(null);
   }
 
   function saveSub(playerIn: string) {
+    if (!subOut) return;
+    setOnCourt(prev => prev.map(p => p === subOut ? playerIn : p));
+    setBench(prev => [subOut, ...prev.filter(p => p !== playerIn)]);
+    setSelectedPlayer(playerIn);
     enqueue({
       event_id: createEventId(),
       type: 'SUBSTITUTION',
@@ -174,144 +241,99 @@ export default function OperatorPage() {
     setSubOut(null);
   }
 
-  const onCourt = ['#7 Burak', '#4 Ahmet', '#5 Mehmet', '#6 Ali', '#8 Kerem'];
-  const bench = ['#9 Ege', '#10 Okan', '#11 Mert', '#12 Can', '#13 Tuna', '#14 Emir', '#15 Arda'];
+  const visibleMarkers = markers.filter(m => courtTab === 'court' || courtTab === 'heat' || (courtTab === 'shots' && m.kind === 'shot') || (courtTab === 'fouls' && m.kind === 'foul'));
 
   return (
     <div className="operator-page">
       <header className="score-header">
         <div className="team-score">
-          <div>
-            <span>EV SAHİBİ</span>
-            <h1>TOFAŞ U14</h1>
-          </div>
+          <div><span>EV SAHİBİ</span><h1>TOFAŞ U14</h1></div>
           <b>{homeScore}</b>
         </div>
-
         <div className="clock-box">
           <span>4. ÇEYREK</span>
           <strong>{fmt(seconds)}</strong>
-          <div className="clock-buttons">
-            <button onClick={startClock}>▶</button>
-            <button onClick={stopClock}>⏸</button>
-          </div>
+          <div className="clock-buttons"><button onClick={startClock}>▶</button><button onClick={stopClock}>⏸</button></div>
           <small>{online ? 'ONLINE' : 'OFFLINE'} / Queue: {typeof window !== 'undefined' ? getQueue().filter(e => e.status !== 'synced').length : 0}</small>
           <button onClick={toggleOnline}>{online ? 'Offline Yap' : 'Online Yap'}</button>
         </div>
-
         <div className="team-score away">
-          <div>
-            <span>MİSAFİR</span>
-            <h1>GEMLİK U14</h1>
-          </div>
+          <div><span>MİSAFİR</span><h1>GEMLİK U14</h1></div>
           <b>{awayScore}</b>
         </div>
       </header>
 
-      <main className="operator-layout">
-        <section className="court-area">
-          <div className="court-toolbar">
-            <button className="active">Saha</button>
-            <button>Şutlar</button>
-            <button>Fauller</button>
-            <button>Heat Map</button>
-          </div>
-
-          <div className="court">
-            <div className="marker made" style={{ left: '24%', top: '30%' }}>AB</div>
-            <div className="marker miss" style={{ left: '36%', top: '39%' }}>K-3</div>
-            <div className="marker made" style={{ left: '51%', top: '52%' }}>HH</div>
-            <div className="marker made" style={{ left: '70%', top: '44%' }}>AB-FA</div>
-          </div>
-
-          <div className="event-feed">
-            <h3>Son Olaylar</h3>
-            <ul>{feed.map((f, i) => <li key={i}>{f}</li>)}</ul>
-          </div>
-        </section>
-
-        <aside className="roster-panel">
-          <div className="panel-title">
-            <div>
-              <h2>TOFAŞ U14</h2>
-              <span>Sadece kontrol edilen takım</span>
-            </div>
-          </div>
-
-          <div className="roster-block">
-            <h3>Sahadakiler</h3>
-            {onCourt.map(p => (
-              <div key={p} className={`player-row ${selectedPlayer === p ? 'selected' : ''}`} onClick={() => setSelectedPlayer(p)}>
-                <div><b>{p}</b><small>Oyunda</small></div>
-                <button onClick={(e) => { e.stopPropagation(); setSubOut(p); }}>Değiş</button>
-              </div>
-            ))}
-          </div>
-
-          <div className="roster-block bench">
-            <h3>Yedekler</h3>
-            <div className="bench-grid">
-              {bench.map(p => <button key={p} onClick={() => setSelectedPlayer(p)}>{p}</button>)}
-            </div>
-          </div>
-
-          <div className="selected-player-card">
-            <span>Seçili Oyuncu</span>
-            <strong>{selectedPlayer}</strong>
-            <small>Bu oyuncuya istatistik işlenecek</small>
-          </div>
-        </aside>
-      </main>
-
-      <footer className="stat-footer">
-        <div className="stat-context">
-          <span>İstatistik Girişi</span>
-          <b>{selectedPlayer}</b>
-        </div>
+      <section className="stat-footer">
+        <div className="stat-context"><span>İstatistik Girişi</span><b>{selectedPlayer}</b><small>Tek tık: atış / isabetsiz • Çift tık: sayı</small></div>
         <div className="stat-buttons">
-          <button onClick={() => basket(2)}>+2</button>
-          <button onClick={() => basket(3)}>+3</button>
-          <button onClick={() => freeThrow(true)}>+1 FT</button>
-          <button onClick={() => freeThrow(false)}>FT Kaçtı</button>
+          <button onClick={() => handleStatClick(2)}>2 Sayı / Atış</button>
+          <button onClick={() => handleStatClick(3)}>3 Sayı / Atış</button>
+          <button onClick={() => handleStatClick(1)}>Faul Çizgisi</button>
           <button onClick={() => eventOnly('OREB')}>Rib. H</button>
           <button onClick={() => eventOnly('DREB')}>Rib. S</button>
           <button onClick={() => eventOnly('STL')}>Top Çalma</button>
           <button onClick={() => eventOnly('BLK')}>Blok</button>
           <button onClick={() => eventOnly('TOV')}>Top Kaybı</button>
-          <button onClick={() => eventOnly('PF')}>Faul</button>
-          <button onClick={() => eventOnly('FD')}>Faul Aldı</button>
+          <button onClick={() => startFoulPick('PF')}>Faul</button>
+          <button onClick={() => startFoulPick('FD')}>Faul Aldı</button>
           <button onClick={() => eventOnly('BY')}>Blok Yedi</button>
         </div>
-      </footer>
+      </section>
 
-      {basketModal && (
+      <main className="operator-layout">
+        <section className="court-area">
+          <div className="court-toolbar">
+            <button className={courtTab === 'court' ? 'active' : ''} onClick={() => setCourtTab('court')}>Saha</button>
+            <button className={courtTab === 'shots' ? 'active' : ''} onClick={() => setCourtTab('shots')}>Şutlar</button>
+            <button className={courtTab === 'fouls' ? 'active' : ''} onClick={() => setCourtTab('fouls')}>Fauller</button>
+            <button className={courtTab === 'heat' ? 'active' : ''} onClick={() => setCourtTab('heat')}>Heat Map</button>
+          </div>
+
+          {(pendingShot || pendingFoul) && (
+            <div className="shot-pick-banner">
+              {pendingShot ? <><b>{pendingShot.player}</b> {pendingShot.made ? 'sayı' : 'isabetsiz atış'} için sahada yeri tıkla.</> : <><b>{selectedPlayer}</b> {pendingFoul} için faul yerini tıkla.</>}
+              <button onClick={() => { setPendingShot(null); setPendingFoul(null); }}>Vazgeç</button>
+            </div>
+          )}
+
+          <div className={`court ${pendingShot || pendingFoul ? 'picking-shot' : ''} ${courtTab === 'heat' ? 'heat-mode' : ''}`} onClick={handleCourtClick}>
+            <div className="half-line" /><div className="center-circle" />
+            <div className="paint left" /><div className="paint right" />
+            <div className="rim left" /><div className="rim right" />
+            <div className="arc left" /><div className="arc right" />
+            {visibleMarkers.map(m => <div key={m.id} className={`marker ${m.kind} ${m.made ? 'made' : 'miss'}`} style={{ left: `${m.x}%`, top: `${m.y}%` }}>{courtTab === 'heat' ? '' : m.label}</div>)}
+          </div>
+        </section>
+
+        <aside className="roster-panel">
+          <div className="panel-title"><div><h2>TOFAŞ U14</h2><span>Sadece kontrol edilen takım</span></div></div>
+          <div className="roster-block">
+            <h3>Sahadakiler</h3>
+            {onCourt.map(p => <div key={p} className={`player-row ${selectedPlayer === p ? 'selected' : ''}`} onClick={() => setSelectedPlayer(p)}><div><b>{p}</b><small>Oyunda</small></div><button onClick={(e) => { e.stopPropagation(); setSubOut(p); }}>Değiş</button></div>)}
+          </div>
+          <div className="roster-block bench">
+            <h3>Yedekler</h3>
+            <div className="bench-grid">{bench.map(p => <button key={p} onClick={() => setSelectedPlayer(p)}>{p}</button>)}</div>
+          </div>
+          <div className="selected-player-card"><span>Seçili Oyuncu</span><strong>{selectedPlayer}</strong><small>Bu oyuncuya istatistik işlenecek</small></div>
+        </aside>
+      </main>
+
+      <section className="event-feed bottom-feed">
+        <h3>Son Olaylar</h3>
+        <ul>{feed.map((f, i) => <li key={i}>{f}</li>)}</ul>
+      </section>
+
+      {shotModal && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h2>{basketModal.player} +{basketModal.points} Basket</h2>
-            <p>Basket sonrası hızlı seçim: Asist / Faul / YOK.</p>
-
+            <h2>{shotModal.player} {shotModal.points} Sayı</h2>
+            <p>Çift tık sayı olarak kaydedildi. Asist / faul seç, sonra şut yerini sahadan işaretle.</p>
             <div className="decision-grid">
-              <div className="decision-card">
-                <h3>Asist?</h3>
-                <button onClick={() => setAssist('#4 Ahmet')}>#4 Ahmet</button>
-                <button onClick={() => setAssist('#5 Mehmet')}>#5 Mehmet</button>
-                <button className="none" onClick={() => setAssist(null)}>YOK</button>
-                <p>Durum: {basketModal.assist}</p>
-              </div>
-
-              <div className="decision-card">
-                <h3>Faul?</h3>
-                <button onClick={() => setFoul('#12 Rakip')}>#12 Rakip PF</button>
-                <button onClick={() => setFoul('#15 Rakip')}>#15 Rakip PF</button>
-                <button className="none" onClick={() => setFoul(null)}>YOK</button>
-                <p>Durum: {basketModal.foul}</p>
-              </div>
+              <div className="decision-card"><h3>Asist?</h3>{onCourt.filter(p => p !== shotModal.player).map(p => <button key={p} onClick={() => setAssist(p)}>{p}</button>)}<button className="none" onClick={() => setAssist(null)}>YOK</button><p>Durum: {shotModal.assist}</p></div>
+              <div className="decision-card"><h3>Faul?</h3><button onClick={() => setFoul('#12 Rakip')}>#12 Rakip PF</button><button onClick={() => setFoul('#15 Rakip')}>#15 Rakip PF</button><button className="none" onClick={() => setFoul(null)}>YOK</button><p>Durum: {shotModal.foul}</p></div>
             </div>
-
-            <div className="modal-actions">
-              <button className="primary" onClick={saveBasket}>Şut Yerini Seç ve Kaydet</button>
-              <button onClick={() => setBasketModal(null)}>İptal</button>
-            </div>
+            <div className="modal-actions"><button className="primary" onClick={startShotPick}>Şut Yerini Seç</button><button onClick={saveShotWithoutLocation}>Konumsuz Kaydet</button><button onClick={() => setShotModal(null)}>İptal</button></div>
           </div>
         </div>
       )}
@@ -322,11 +344,8 @@ export default function OperatorPage() {
             <h2>Oyuncu Değişikliği</h2>
             <p>Çıkan oyuncu: <b>{subOut}</b></p>
             <h3>Oyuna Girecek Oyuncu</h3>
-            <div className="bench-grid">
-              {bench.map(p => <button key={p} onClick={() => saveSub(p)}>→ {p}</button>)}
-            </div>
-            <br />
-            <button onClick={() => setSubOut(null)}>İptal</button>
+            <div className="bench-grid">{bench.map(p => <button key={p} onClick={() => saveSub(p)}>→ {p}</button>)}</div>
+            <br /><button onClick={() => setSubOut(null)}>İptal</button>
           </div>
         </div>
       )}

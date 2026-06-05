@@ -89,7 +89,3 @@ Sıradaki işler:
 - Operatör A / Operatör B ayrı route yapısı
 - Realtime canlı skor
 - PDF/Excel raporları
-.npmrc
-Add .npmrc file with npm registry configuration
-.nvmrc
-Add .nvmrc file with Node.js version 20
